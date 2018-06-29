@@ -4,13 +4,25 @@ import collections
 import glob
 import fnmatch
 import os
+import sys
 import codecs
+
+def doseek(f, n):
+    if sys.platform == 'win32':
+        # Windows raw disks can only be seeked to a multiple of the block size
+        BLOCKSIZE = 512
+        na, nb = divmod(n, BLOCKSIZE)
+        f.seek(na * BLOCKSIZE)
+        if nb:
+            f.read(nb)
+    else:
+        f.seek(n)
 
 def readat(f, n, s):
     pos = f.tell()
-    f.seek(n)
+    doseek(f, n)
     res = f.read(s)
-    f.seek(pos)
+    doseek(f, pos)
     return res
 
 def parseFilename(s):
@@ -179,7 +191,7 @@ def parse_args(argv):
         help='Recover files matching pattern (glob()); can be specified multiple times')
     parser.add_argument('-o', '--outdir',
         help='Output directory (default .)')
-    parser.add_argument('disk', help='NTFS partition (e.g. /dev/disk*)', type=argparse.FileType('rb'))
+    parser.add_argument('disk', help='NTFS partition (e.g. /dev/disk*, \\\\.\\Harddisk*Partition*)', type=argparse.FileType('rb'))
     return parser.parse_args(argv)
 
 def main(argv):
