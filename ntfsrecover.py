@@ -1,8 +1,10 @@
+from __future__ import unicode_literals, print_function
 import struct
 import collections
 import glob
 import fnmatch
 import os
+import codecs
 
 def readat(f, n, s):
     pos = f.tell()
@@ -13,7 +15,7 @@ def readat(f, n, s):
 
 def parseFilename(s):
     ref, = struct.unpack('<Q', s[:8])
-    flen = ord(s[64])
+    flen = ord(s[64:65])
     fn = s[66:66 + flen*2].decode('UTF-16-LE')
     return ref, fn
 
@@ -44,7 +46,7 @@ ATTR_INFO = {
 def parse_varint(v):
     if not v:
         return 0
-    return int(v[::-1].encode('hex'), 16)
+    return int(codecs.encode(v[::-1], 'hex'), 16)
 
 def read_runlist(f, bpc, runlist):
     out = bytearray()
@@ -72,7 +74,7 @@ def parse_attr(f, bpc, chunk):
         runlist = []
         curoff = 0
         while 1:
-            header = ord(chunk[rlpos])
+            header = ord(chunk[rlpos:rlpos+1])
             if not header:
                 break
             rlpos += 1
@@ -112,16 +114,16 @@ def parse_file(f, chunkoff, bpc, chunk):
             sname, name, data = parse_attr(f, bpc, chunk[pos:pos+size])
             attrs[sname][name] = data
         except Exception as e:
-            print "File at offset %d: failed to parse attr type=%d pos=%d: %s" % (chunkoff, type, pos, e)
+            print("File at offset %d: failed to parse attr type=%d pos=%d: %s" % (chunkoff, type, pos, e))
 
         pos += size
     return attrs
 
 def parse_mft(f, bpc, mft):
     out = []
-    for i in xrange(len(mft) / 1024):
+    for i in range(len(mft) // 1024):
         chunk = mft[i*1024:(i+1)*1024]
-        if chunk[:4] == 'FILE':
+        if chunk[:4] == b'FILE':
             out.append(parse_file(f, i * 1024, bpc, chunk))
         else:
             out.append(None)
@@ -129,7 +131,7 @@ def parse_mft(f, bpc, mft):
     return out
 
 def read_mft(f, bpc, mft_cluster, clusters_per_mft):
-    print "Loading MBR from cluster %d" % mft_cluster
+    print("Loading MBR from cluster %d" % mft_cluster)
     mft = readat(f, mft_cluster * bpc, clusters_per_mft * bpc)
     try:
         mftattr = parse_file(f, 0, bpc, mft[:1024])
@@ -138,7 +140,7 @@ def read_mft(f, bpc, mft_cluster, clusters_per_mft):
             raise Exception("$MFT truncated")
         mft = newmft
     except Exception as e:
-        print "WARNING: Failed to load $MFT (%s), proceeding with partial MFT." % e
+        print("WARNING: Failed to load $MFT (%s), proceeding with partial MFT." % e)
 
     return mft
     
@@ -193,7 +195,7 @@ def main(argv):
         os.chdir(args.outdir)
 
     # parse essential details of the MBR
-    if readat(f, 3, 8) != 'NTFS    ':
+    if readat(f, 3, 8) != b'NTFS    ':
         raise ValueError("Not an NTFS disk???")
 
     bps, spc = struct.unpack('<HB', readat(f, 0xb, 3))
@@ -205,7 +207,7 @@ def main(argv):
 
     mft_clust, mftmirr_clust, clust_per_mft = struct.unpack('<QQB', readat(f, 0x30, 17))
 
-    print "Reading MFT"
+    print("Reading MFT")
     if args.mft:
         mftbytes = args.mft.read()
     else:
@@ -214,7 +216,7 @@ def main(argv):
     if args.save_mft:
         args.save_mft.write(mftbytes)
 
-    print "Parsing MFT"
+    print("Parsing MFT")
     mft = parse_mft(f, bpc, mftbytes)
     for i, file in enumerate(mft):
         try:
@@ -223,24 +225,24 @@ def main(argv):
             continue
 
         try:
-            fullpath = u'/'.join(get_filepath(mft, i))
+            fullpath = '/'.join(get_filepath(mft, i))
         except Exception as e:
-            fullpath = u'__ORPHANED__/' + fn
+            fullpath = '__ORPHANED__/' + fn
 
         if not args.pattern:
-            print fullpath
+            print(fullpath)
             continue
 
         for pat in args.pattern:
             pat = pat.lower().encode('utf8')
             if fnmatch.fnmatch(fn.lower().encode('utf8'), pat) or fnmatch.fnmatch(fullpath.lower().encode('utf8'), pat):
-                print "Recovering", fullpath,
+                print("Recovering", fullpath, end=' ')
                 try:
                     save_file(file, fullpath)
                 except Exception as e:
-                    print "failed:", e
+                    print("failed:", e)
                 else:
-                    print "Success!"
+                    print("Success!")
 
 if __name__ == '__main__':
     import sys
