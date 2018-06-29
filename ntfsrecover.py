@@ -196,6 +196,18 @@ def get_filepath(mft, i):
         i = parent & 0xffffffffffff
     return bits[::-1]
 
+def open_output_file(destfn):
+    if not os.path.isfile(destfn):
+        return open(destfn, 'wb')
+
+    t = 0
+    while True:
+        fn = destfn + '_%04d' % t
+        if not os.path.isfile(fn):
+            return open(fn, 'wb')
+        t += 1
+    raise OSError("File exists.")
+
 def save_file(mfti, destfn):
     if '/' in destfn:
         try:
@@ -203,13 +215,13 @@ def save_file(mfti, destfn):
         except OSError:
             pass
 
-    with open(destfn, 'wb') as outf:
+    with open_output_file(destfn) as outf:
         outf.write(mfti['DATA'][None]())
 
     for ads in mfti['DATA']:
         if ads is None:
             continue
-        with open(destfn + '~' + ads, 'wb') as outf:
+        with open_output_file(destfn + '~' + ads) as outf:
             outf.write(mfti['DATA'][ads]())
 
 def parse_args(argv):
