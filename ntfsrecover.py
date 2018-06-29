@@ -85,13 +85,16 @@ def parse_attr(f, bpc, chunk):
         rlpos = rloff
         runlist = []
         curoff = 0
-        while 1:
+        while rlpos < len(chunk):
             header = ord(chunk[rlpos:rlpos+1])
             if not header:
                 break
             rlpos += 1
             lenlen = header & 0xf
             offlen = header >> 4
+            if rlpos + lenlen + offlen > len(chunk):
+                print("Warning: invalid runlist header %02x (runlist %s)" % (header, codecs.encode(chunk[rloff:], 'hex')))
+                break
             thislen = parse_varint(chunk[rlpos:rlpos+lenlen])
             rlpos += lenlen
             thisoff = parse_varint(chunk[rlpos:rlpos+offlen])
@@ -118,7 +121,7 @@ def parse_file(f, chunkoff, bpc, chunk):
         if pos > len(chunk) - 12:
             # Uhoh, corruption?
             break
-        type, size, nonres, namelen, nameoff = struct.unpack('<iiBBH', chunk[pos:pos+12])
+        type, size, nonres, namelen, nameoff = struct.unpack('<iIBBH', chunk[pos:pos+12])
         if type == -1:
             break
 
