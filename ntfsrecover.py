@@ -176,7 +176,7 @@ def save_file(mfti, destfn):
         except OSError:
             pass
 
-    with open(destfn, 'w') as outf:
+    with open(destfn, 'wb') as outf:
         outf.write(mfti['DATA'][None]())
 
 def parse_args(argv):
@@ -194,13 +194,13 @@ def parse_args(argv):
         help='Recover files matching pattern (glob()); can be specified multiple times')
     parser.add_argument('-o', '--outdir',
         help='Output directory (default .)')
-    parser.add_argument('disk', help='NTFS partition (e.g. /dev/disk*, \\\\.\\Harddisk*Partition*)', type=argparse.FileType('rb'))
+    parser.add_argument('disk', help='NTFS partition (e.g. /dev/disk*, \\\\.\\Harddisk*Partition*)')
     return parser.parse_args(argv)
 
 def main(argv):
     args = parse_args(argv)
 
-    f = args.disk
+    f = open(args.disk, 'rb')
 
     if args.outdir:
         try:
