@@ -93,7 +93,7 @@ def parse_attr(f, bpc, chunk):
             lenlen = header & 0xf
             offlen = header >> 4
             if rlpos + lenlen + offlen > len(chunk):
-                print("Warning: invalid runlist header %02x (runlist %s)" % (header, codecs.encode(chunk[rloff:], 'hex')))
+                print("Warning: invalid runlist header %02x (runlist %s)" % (header, codecs.encode(chunk[rloff:], 'hex')), file=sys.stderr)
                 break
             thislen = parse_varint(chunk[rlpos:rlpos+lenlen])
             rlpos += lenlen
@@ -112,10 +112,32 @@ def parse_attr(f, bpc, chunk):
 
     return sname, name, attrdata
 
+def usa_fixup(chunk, chunkoff, usa_ofs, usa_count):
+    chunk = bytearray(chunk)
+    if usa_ofs == 0 or usa_count == 0:
+        return chunk
+
+    upos = usa_ofs
+    usa_num = chunk[upos:upos+2]
+    upos += 2
+    for i in range(len(chunk) // 512):
+        cpos = i*512+510
+        if chunk[cpos:cpos+2] != usa_num:
+            print("Warning: bad USA data at MBR offset %d - disk corrupt?" % (chunkoff + cpos), file=sys.stderr)
+        else:
+            chunk[cpos:cpos+2] = chunk[upos:upos+2]
+        upos += 2
+    return chunk
+
 def parse_file(f, chunkoff, bpc, chunk):
     magic, usa_ofs, usa_count, lsn, seq, link, attr_offset = struct.unpack(
         '<IHHQHHH', chunk[:22])
     attrs = collections.defaultdict(dict)
+    try:
+        chunk = usa_fixup(chunk, chunkoff, usa_ofs, usa_count)
+    except Exception as e:
+        print("File at offset %d: failed to perform USA fixup: %s" % (chunkoff, e), file=sys.stderr)
+
     pos = attr_offset
     while 1:
         if pos > len(chunk) - 12:
@@ -129,7 +151,7 @@ def parse_file(f, chunkoff, bpc, chunk):
             sname, name, data = parse_attr(f, bpc, chunk[pos:pos+size])
             attrs[sname][name] = data
         except Exception as e:
-            print("File at offset %d: failed to parse attr type=%d pos=%d: %s" % (chunkoff, type, pos, e))
+            print("File at offset %d: failed to parse attr type=%d pos=%d: %s" % (chunkoff, type, pos, e), file=sys.stderr)
 
         pos += size
     return attrs
@@ -137,16 +159,21 @@ def parse_file(f, chunkoff, bpc, chunk):
 def parse_mft(f, bpc, mft):
     out = []
     for i in range(len(mft) // 1024):
+        if i % 791 == 0:
+            sys.stderr.write("\rParsing MFT: %d/%d" % (i, len(mft) // 1024))
+            sys.stderr.flush()
+
         chunk = mft[i*1024:(i+1)*1024]
         if chunk[:4] == b'FILE':
             out.append(parse_file(f, i * 1024, bpc, chunk))
         else:
             out.append(None)
-
+    sys.stderr.write("\rParsing MFT: Done!              \n")
+    sys.stderr.flush()
     return out
 
 def read_mft(f, bpc, mft_cluster, clusters_per_mft):
-    print("Loading MBR from cluster %d" % mft_cluster)
+    print("Loading MBR from cluster %d" % mft_cluster, file=sys.stderr)
     mft = readat(f, mft_cluster * bpc, clusters_per_mft * bpc)
     try:
         mftattr = parse_file(f, 0, bpc, mft[:1024])
@@ -155,7 +182,7 @@ def read_mft(f, bpc, mft_cluster, clusters_per_mft):
             raise Exception("$MFT truncated")
         mft = newmft
     except Exception as e:
-        print("WARNING: Failed to load $MFT (%s), proceeding with partial MFT." % e)
+        print("WARNING: Failed to load $MFT (%s), proceeding with partial MFT." % e, file=sys.stderr)
 
     return mft
     
@@ -178,6 +205,12 @@ def save_file(mfti, destfn):
 
     with open(destfn, 'wb') as outf:
         outf.write(mfti['DATA'][None]())
+
+    for ads in mfti['DATA']:
+        if ads is None:
+            continue
+        with open(destfn + '~' + ads, 'wb') as outf:
+            outf.write(mfti['DATA'][ads]())
 
 def parse_args(argv):
     import argparse
@@ -222,7 +255,7 @@ def main(argv):
 
     mft_clust, mftmirr_clust, clust_per_mft = struct.unpack('<QQB', readat(f, 0x30, 17))
 
-    print("Reading MFT")
+    print("Reading MFT", file=sys.stderr)
     if args.mft:
         mftbytes = args.mft.read()
     else:
@@ -231,7 +264,6 @@ def main(argv):
     if args.save_mft:
         args.save_mft.write(mftbytes)
 
-    print("Parsing MFT")
     mft = parse_mft(f, bpc, mftbytes)
     for i, file in enumerate(mft):
         try:
