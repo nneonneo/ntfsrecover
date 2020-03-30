@@ -36,6 +36,6 @@ First, make a backup of your MFT:
 
 This will also print out the full paths to every single file on your disk. (This will be verbose as hell, but it's very useful!). Next, you can use `--pattern` in conjunction with `--mft` to selectively recover files. (`--mft` saves the program from having to read the MFT again; only file data will need to be read).
 
-    python ntfsrecover.py /dev/diskX --mft mft --pattern '*.jpg' --outdir recovered
+    python ntfsrecover.py /dev/diskX --mft mft --pattern "*.jpg" --outdir recovered
 
-You can specify `--pattern` multiple times to recover multiple different kinds of files in one run. It will match either the full path *or* the filename; thus, you can do things like `--pattern '*/My Documents/*'`.
+You can specify `--pattern` multiple times to recover multiple different kinds of files in one run. It will match either the full path *or* the filename; thus, you can do things like `--pattern "*/My Documents/*"`.
